@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:aop="http://www.springframework.org/schema/aop" 
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+  		http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+  		http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context-4.0.xsd
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop-4.0.xsd
+        http://www.springframework.org/schema/tx
+     	http://www.springframework.org/schema/tx/spring-tx-4.0.xsd">
+
+	<bean id="triggerAspect" class="org.rency.trigger.aspect.TriggerAspect" />
+
+	<aop:config proxy-target-class="true">
+		<aop:pointcut id="servicePointcut" expression="execution(public * org.rency.trigger.jobs..*.*(..))" />
+		<aop:advisor advice-ref="txAdvice" pointcut-ref="servicePointcut" />
+		
+		<aop:aspect ref="triggerAspect">
+			<aop:before pointcut-ref="servicePointcut" method="beforeAdvice" />
+			<aop:after-returning pointcut-ref="servicePointcut" method="afterAdvice" />
+			<aop:after-throwing pointcut-ref="servicePointcut" method="afterThrowAdvice" throwing="ex" />
+		</aop:aspect>
+	</aop:config>
+	
+	<bean id="executor" class="org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor">
+		<property name="corePoolSize" value="10" />
+		<property name="maxPoolSize" value="50" />
+		<property name="queueCapacity" value="100" />
+	</bean>
+	
+	<!-- 爬虫状态监视器 -->
+	<bean id="crawlerStatusMonitorJob" class="org.rency.trigger.jobs.CrawlerStatusMonitorTrigger" />
+	<bean id="crawlerStatusMonitorDetail" class="org.springframework.scheduling.quartz.MethodInvokingJobDetailFactoryBean">
+		<property name="targetObject" ref="crawlerStatusMonitorJob" />
+		<property name="targetMethod" value="execute" />
+	</bean>
+	<bean id="crawlerStatusMonitorTrigger" class="org.springframework.scheduling.quartz.CronTriggerFactoryBean">
+		<property name="jobDetail" ref="crawlerStatusMonitorDetail" />
+		<property name="cronExpression" value="${CRON_CRAWLERSTATUSMONITOR}" />
+	</bean>
+
+	<!-- 修改爬虫任务属性定时器 -->
+	<bean id="changeTaskQueueJob" class="org.rency.trigger.jobs.ChangeTaskQueueTrigger" />
+	<bean id="changeTaskQueueJobDetail" class="org.springframework.scheduling.quartz.MethodInvokingJobDetailFactoryBean">
+		<property name="targetObject" ref="changeTaskQueueJob" />
+		<property name="targetMethod" value="execute" />
+	</bean>
+	<bean id="changeTaskQueueJobTrigger" class="org.springframework.scheduling.quartz.CronTriggerFactoryBean">
+		<property name="jobDetail" ref="changeTaskQueueJobDetail" />
+		<property name="cronExpression" value="${CRON_CHANGETASKQUEUE}" />
+	</bean>
+	
+	<!-- 删除消息队列中过期的消息 -->
+	<bean id="deleteMessageQueueJob" class="org.rency.trigger.jobs.DeleteMessageQueueTrigger" />
+	<bean id="deleteMessageQueueJobDetail" class="org.springframework.scheduling.quartz.MethodInvokingJobDetailFactoryBean">
+		<property name="targetObject" ref="deleteMessageQueueJob" />
+		<property name="targetMethod" value="execute" />
+	</bean>
+	<bean id="deleteMessageQueueJobTrigger" class="org.springframework.scheduling.quartz.CronTriggerFactoryBean">
+		<property name="jobDetail" ref="deleteMessageQueueJobDetail" />
+		<property name="cronExpression" value="${CRON_DELETE_MESSAGEQUEUE}" />
+	</bean>
+	
+	<!-- 定时创建索引 -->
+	<bean id="luceneIndexJob" class="org.rency.trigger.jobs.LuceneIndexTrigger" />
+	<bean id="luceneIndexJobDetail" class="org.springframework.scheduling.quartz.MethodInvokingJobDetailFactoryBean">
+		<property name="targetObject" ref="luceneIndexJob" />
+		<property name="targetMethod" value="execute" />
+	</bean>
+	<bean id="luceneIndexJobTrigger" class="org.springframework.scheduling.quartz.CronTriggerFactoryBean">
+		<property name="jobDetail" ref="luceneIndexJobDetail" />
+		<property name="cronExpression" value="${CRON_LUCENE_INDEX}" />
+	</bean>
+
+	<bean id="startQuartz" class="org.springframework.scheduling.quartz.SchedulerFactoryBean" lazy-init="false">
+		<property name="triggers">
+			<list>
+				<ref bean="crawlerStatusMonitorTrigger" />
+				<ref bean="changeTaskQueueJobTrigger" />
+				<ref bean="deleteMessageQueueJobTrigger" />
+				<ref bean="luceneIndexJobTrigger" />
+			</list>
+		</property>
+		<property name="taskExecutor" ref="executor" />
+		<property name="configLocation" value="classpath:quartz.properties" />
+		<property name="schedulerName" value="dpfScheduler" />
+	</bean>
+
+</beans>
